@@ -13,7 +13,7 @@ import { ComplaintModel } from '../models/complaint'
 import { Op } from 'sequelize'
 import challengeUtils = require('../lib/challengeUtils')
 
-const logger = require('../lib/logger')
+import logger from '../lib/logger'
 const Prometheus = require('prom-client')
 const onFinished = require('on-finished')
 const orders = require('../data/mongodb').orders

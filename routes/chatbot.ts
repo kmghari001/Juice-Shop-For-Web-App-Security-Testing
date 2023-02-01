@@ -10,8 +10,8 @@ import { UserModel } from '../models/user'
 import { JwtPayload, VerifyErrors } from 'jsonwebtoken'
 import challengeUtils = require('../lib/challengeUtils')
 import { validateChatBot } from '../lib/startup/validateChatBot'
+import logger from '../lib/logger'
 
-const logger = require('../lib/logger')
 const { Bot } = require('juicy-chat-bot')
 const security = require('../lib/insecurity')
 const jwt = require('jsonwebtoken')

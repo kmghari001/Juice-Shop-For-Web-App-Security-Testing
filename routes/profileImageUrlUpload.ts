@@ -7,10 +7,10 @@ import fs = require('fs')
 import { Request, Response, NextFunction } from 'express'
 
 import { UserModel } from '../models/user'
+import logger from '../lib/logger'
 const utils = require('../lib/utils')
 const security = require('../lib/insecurity')
 const request = require('request')
-const logger = require('../lib/logger')
 
 module.exports = function profileImageUrlUpload () {
   return (req: Request, res: Response, next: NextFunction) => {

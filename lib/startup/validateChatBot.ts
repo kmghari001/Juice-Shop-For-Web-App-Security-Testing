@@ -5,8 +5,8 @@
 
 import config from 'config'
 import colors from 'colors/safe'
+import logger from '../logger'
 
-const logger = require('../lib/logger')
 const utils = require('../utils')
 
 export const validateChatBot = (trainingData: any, exitOnFailure = true) => {
