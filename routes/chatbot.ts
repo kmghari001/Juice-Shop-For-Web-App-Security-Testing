@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-import fs = require('fs')
+import fs from 'fs/promises'
 import { Request, Response, NextFunction } from 'express'
 import { User } from '../data/types'
 import { UserModel } from '../models/user'
 import { JwtPayload, VerifyErrors } from 'jsonwebtoken'
 import challengeUtils = require('../lib/challengeUtils')
+import { validateChatBot } from '../lib/startup/validateChatBot'
 
 const logger = require('../lib/logger')
 const { Bot } = require('juicy-chat-bot')
@@ -24,34 +25,40 @@ let trainingFile = config.get('application.chatBot.trainingData')
 let testCommand: string, bot: any
 
 async function initialize () {
+  let fileContent: string
   if (utils.isUrl(trainingFile)) {
-    const file = utils.extractFilename(trainingFile)
-    const data = await download(trainingFile)
-    fs.writeFileSync('data/chatbot/' + file, data)
+    fileContent = await download(trainingFile)
+  } else {
+    trainingFile = utils.extractFilename(trainingFile)
+    fileContent = await fs.readFile(`data/chatbot/${trainingFile}`, 'utf8')
   }
 
-  fs.copyFileSync(
-    'data/static/botDefaultTrainingData.json',
-    'data/chatbot/botDefaultTrainingData.json'
+  const trainingSet = JSON.parse(fileContent)
+  validateChatBot(trainingSet)
+
+  testCommand = trainingSet.data[0].utterances[0]
+  bot = new Bot(
+    config.get('application.chatBot.name'),
+    config.get('application.chatBot.greeting'),
+    fileContent,
+    config.get('application.chatBot.defaultResponse')
   )
-
-  trainingFile = utils.extractFilename(trainingFile)
-  const trainingSet = fs.readFileSync(`data/chatbot/${trainingFile}`, 'utf8')
-  require('../lib/startup/validateChatBot')(JSON.parse(trainingSet))
-
-  testCommand = JSON.parse(trainingSet).data[0].utterances[0]
-  bot = new Bot(config.get('application.chatBot.name'), config.get('application.chatBot.greeting'), trainingSet, config.get('application.chatBot.defaultResponse'))
   return bot.train()
 }
 
 void initialize()
 
-async function processQuery (user: User, req: Request, res: Response, next: NextFunction) {
+async function processQuery (
+  user: User,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   const username = user.username
   if (!username) {
     res.status(200).json({
       action: 'namequery',
-      body: 'I\'m sorry I didn\'t get your name. What shall I call you?'
+      body: "I'm sorry I didn't get your name. What shall I call you?"
     })
     return
   }
@@ -64,7 +71,9 @@ async function processQuery (user: User, req: Request, res: Response, next: Next
         body: bot.greet(`${user.id}`)
       })
     } catch (err) {
-      next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
+      next(
+        new Error('Blocked illegal activity by ' + req.socket.remoteAddress)
+      )
     }
     return
   }
@@ -74,7 +83,9 @@ async function processQuery (user: User, req: Request, res: Response, next: Next
     try {
       bot.addUser(`${user.id}`, username)
     } catch (err) {
-      next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
+      next(
+        new Error('Blocked illegal activity by ' + req.socket.remoteAddress)
+      )
       return
     }
   }
@@ -91,7 +102,9 @@ async function processQuery (user: User, req: Request, res: Response, next: Next
     const response = await bot.respond(req.body.query, user.id)
     if (response.action === 'function') {
       if (response.handler && botUtils[response.handler]) {
-        res.status(200).json(await botUtils[response.handler](req.body.query, user))
+        res
+          .status(200)
+          .json(await botUtils[response.handler](req.body.query, user))
       } else {
         res.status(200).json({
           action: 'response',
@@ -109,36 +122,45 @@ async function processQuery (user: User, req: Request, res: Response, next: Next
         body: config.get('application.chatBot.defaultResponse')
       })
     } catch (err) {
-      challengeUtils.solveIf(challenges.killChatbotChallenge, () => { return true })
+      challengeUtils.solveIf(challenges.killChatbotChallenge, () => {
+        return true
+      })
       res.status(200).json({
         action: 'response',
-        body: `Remember to stay hydrated while I try to recover from "${utils.getErrorMessage(err)}"...`
+        body: `Remember to stay hydrated while I try to recover from "${utils.getErrorMessage(
+          err
+        )}"...`
       })
     }
   }
 }
 
 function setUserName (user: User, req: Request, res: Response) {
-  UserModel.findByPk(user.id).then((user: UserModel | null) => {
-    if (!user) {
-      throw new Error('No such user found!')
-    }
-    void user.update({ username: req.body.query }).then((updatedUser: UserModel) => {
-      updatedUser = utils.queryResultToJson(updatedUser)
-      const updatedToken = security.authorize(updatedUser)
-      security.authenticatedUsers.put(updatedToken, updatedUser)
-      bot.addUser(`${updatedUser.id}`, req.body.query)
-      res.status(200).json({
-        action: 'response',
-        body: bot.greet(`${updatedUser.id}`),
-        token: updatedToken
-      })
-    }).catch((err: unknown) => {
+  UserModel.findByPk(user.id)
+    .then((user: UserModel | null) => {
+      if (!user) {
+        throw new Error('No such user found!')
+      }
+      void user
+        .update({ username: req.body.query })
+        .then((updatedUser: UserModel) => {
+          updatedUser = utils.queryResultToJson(updatedUser)
+          const updatedToken = security.authorize(updatedUser)
+          security.authenticatedUsers.put(updatedToken, updatedUser)
+          bot.addUser(`${updatedUser.id}`, req.body.query)
+          res.status(200).json({
+            action: 'response',
+            body: bot.greet(`${updatedUser.id}`),
+            token: updatedToken
+          })
+        })
+        .catch((err: unknown) => {
+          logger.error(`Could not set username: ${utils.getErrorMessage(err)}`)
+        })
+    })
+    .catch((err: unknown) => {
       logger.error(`Could not set username: ${utils.getErrorMessage(err)}`)
     })
-  }).catch((err: unknown) => {
-    logger.error(`Could not set username: ${utils.getErrorMessage(err)}`)
-  })
 }
 
 module.exports.initialize = initialize
@@ -150,22 +172,28 @@ module.exports.status = function status () {
     if (!bot) {
       res.status(200).json({
         status: false,
-        body: `${config.get('application.chatBot.name')} isn't ready at the moment, please wait while I set things up`
+        body: `${config.get(
+          'application.chatBot.name'
+        )} isn't ready at the moment, please wait while I set things up`
       })
       return
     }
     const token = req.cookies.token || utils.jwtFrom(req)
     if (token) {
       const user: User = await new Promise((resolve, reject) => {
-        jwt.verify(token, security.publicKey, (err: VerifyErrors | null, decoded: JwtPayload) => {
-          if (err !== null) {
-            res.status(401).json({
-              error: 'Unauthenticated user'
-            })
-          } else {
-            resolve(decoded.data)
+        jwt.verify(
+          token,
+          security.publicKey,
+          (err: VerifyErrors | null, decoded: JwtPayload) => {
+            if (err !== null) {
+              res.status(401).json({
+                error: 'Unauthenticated user'
+              })
+            } else {
+              resolve(decoded.data)
+            }
           }
-        })
+        )
       })
 
       if (!user) {
@@ -177,7 +205,7 @@ module.exports.status = function status () {
       if (!username) {
         res.status(200).json({
           action: 'namequery',
-          body: 'I\'m sorry I didn\'t get your name. What shall I call you?'
+          body: "I'm sorry I didn't get your name. What shall I call you?"
         })
         return
       }
@@ -186,17 +214,25 @@ module.exports.status = function status () {
         bot.addUser(`${user.id}`, username)
         res.status(200).json({
           status: bot.training.state,
-          body: bot.training.state ? bot.greet(`${user.id}`) : `${config.get('application.chatBot.name')} isn't ready at the moment, please wait while I set things up`
+          body: bot.training.state
+            ? bot.greet(`${user.id}`)
+            : `${config.get(
+                'application.chatBot.name'
+              )} isn't ready at the moment, please wait while I set things up`
         })
       } catch (err) {
-        next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
+        next(
+          new Error('Blocked illegal activity by ' + req.socket.remoteAddress)
+        )
       }
       return
     }
 
     res.status(200).json({
       status: bot.training.state,
-      body: `Hi, I can't recognize you. Sign in to talk to ${config.get('application.chatBot.name')}`
+      body: `Hi, I can't recognize you. Sign in to talk to ${config.get(
+        'application.chatBot.name'
+      )}`
     })
   }
 }
@@ -206,7 +242,9 @@ module.exports.process = function respond () {
     if (!bot) {
       res.status(200).json({
         action: 'response',
-        body: `${config.get('application.chatBot.name')} isn't ready at the moment, please wait while I set things up`
+        body: `${config.get(
+          'application.chatBot.name'
+        )} isn't ready at the moment, please wait while I set things up`
       })
     }
     const token = req.cookies.token || utils.jwtFrom(req)
@@ -218,15 +256,19 @@ module.exports.process = function respond () {
     }
 
     const user: User = await new Promise((resolve, reject) => {
-      jwt.verify(token, security.publicKey, (err: VerifyErrors | null, decoded: JwtPayload) => {
-        if (err !== null) {
-          res.status(401).json({
-            error: 'Unauthenticated user'
-          })
-        } else {
-          resolve(decoded.data)
+      jwt.verify(
+        token,
+        security.publicKey,
+        (err: VerifyErrors | null, decoded: JwtPayload) => {
+          if (err !== null) {
+            res.status(401).json({
+              error: 'Unauthenticated user'
+            })
+          } else {
+            resolve(decoded.data)
+          }
         }
-      })
+      )
     })
 
     if (!user) {

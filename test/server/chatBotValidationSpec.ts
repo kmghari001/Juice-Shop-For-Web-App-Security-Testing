@@ -4,12 +4,11 @@
  */
 
 import chai = require('chai')
+import { validateChatBot, checkIntentWithFunctionHandlerExists } from '../../lib/startup/validateChatBot'
+
 const sinonChai = require('sinon-chai')
 const expect = chai.expect
 chai.use(sinonChai)
-
-const validateChatBot = require('../../lib/startup/validateChatBot')
-const { checkIntentWithFunctionHandlerExists } = require('../../lib/startup/validateChatBot')
 
 describe('chatBotValidation', () => {
   describe('checkIntentWithHandlerExists', () => {
@@ -40,7 +39,7 @@ describe('chatBotValidation', () => {
         ]
       }
 
-      expect(checkIntentWithFunctionHandlerExists(trainingData, 'queries.test')).to.equal(false)
+      expect(checkIntentWithFunctionHandlerExists(trainingData, 'queries.test', 'testHandler')).to.equal(false)
     })
 
     it('should fail if the training data lacks the expected handler for the given intent', () => {

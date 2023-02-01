@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: MIT
  */
 
-import config = require('config')
-const colors = require('colors/safe')
-const logger = require('../logger')
+import config from 'config'
+import colors from 'colors/safe'
+
+const logger = require('../lib/logger')
 const utils = require('../utils')
 
-const validateChatBot = (trainingData: any, exitOnFailure = true) => {
+export const validateChatBot = (trainingData: any, exitOnFailure = true) => {
   let success = true
   success = checkIntentWithFunctionHandlerExists(trainingData, 'queries.couponCode', 'couponCode') && success
   success = checkIntentWithFunctionHandlerExists(trainingData, 'queries.productPrice', 'productPrice') && success
@@ -26,21 +27,16 @@ const validateChatBot = (trainingData: any, exitOnFailure = true) => {
   return success
 }
 
-const checkIntentWithFunctionHandlerExists = (trainingData: any, intent: string, handler: string) => {
-  let success = true
+export const checkIntentWithFunctionHandlerExists = (trainingData: any, intent: string, handler: string) => {
   const intentData = trainingData.data.filter((data: any) => data.intent === intent)
   if (intentData.length === 0) {
     logger.warn(`Intent ${colors.italic(intent)} is missing in chatbot training data (${colors.red('NOT OK')})`)
-    success = false
+    return false
   } else {
     if (intentData[0].answers.filter((answer: { action: string, handler: string }) => answer.action === 'function' && answer.handler === handler).length === 0) {
       logger.warn(`Answer with ${colors.italic('function')} action and handler ${colors.italic(handler)} is missing for intent ${colors.italic(intent)} (${colors.red('NOT OK')})`)
-      success = false
+      return false
     }
   }
-  return success
+  return true
 }
-
-validateChatBot.checkIntentWithFunctionHandlerExists = checkIntentWithFunctionHandlerExists
-
-module.exports = validateChatBot
